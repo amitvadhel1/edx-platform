@@ -1,11 +1,12 @@
 """
-When a user requests retirement mistakenly
+Use this mgmt command when a user requests retirement mistakenly, then requests
+for the retirement request to be cancelled. The command can't cancel a retirement
+that has already commenced - only pending retirements.
 """
 from __future__ import print_function
 
 import logging
 
-from django.contrib.auth.models import User
 from django.core.management.base import BaseCommand, CommandError
 from openedx.core.djangoapps.user_api.models import UserRetirementStatus
 
@@ -15,7 +16,7 @@ LOGGER = logging.getLogger(__name__)
 
 class Command(BaseCommand):
     """
-    Implementation of the populate command
+    Implementation of the cancel_user_retirement_request command.
     """
     help = 'Cancels the retirement of a user who has requested retirement - but has not yet been retired.'
 
@@ -27,11 +28,11 @@ class Command(BaseCommand):
         """
         Execute the command.
         """
-        email_address = options['email_address']
+        email_address = options['email_address'].lower()
 
         try:
             # Load the user retirement status.
-            retirement_status = UserRetirementStatus.objects.select_related('current_state').get(
+            retirement_status = UserRetirementStatus.objects.select_related('current_state').select_related('user').get(
                 original_email=email_address
             )
         except UserRetirementStatus.DoesNotExist:
@@ -48,9 +49,8 @@ class Command(BaseCommand):
             )
 
         # Load the user record using the retired email address -and- change the email address back.
-        user = User.objects.get(email=retirement_status.retired_email)
-        user.email = email_address
-        user.save()
+        retirement_status.user.email = email_address
+        retirement_status.user.save()
 
         # Delete the user retirement status record.
         # No need to delete the accompanying "permanent" retirement request record - it gets done via Django signal.
